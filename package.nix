@@ -9,91 +9,32 @@
 
 let
   pname = "osu-lazer-bin-tachyon";
-  version = "2025.912.0";
+  
+  # Load version information from JSON
+  versionData = lib.importJSON ./version.json;
+  version = versionData.version;
 
   src =
     {
       x86_64-linux = fetchurl {
-        url = "https://github.com/ppy/osu/releases/download/${version}-tachyon/osu.AppImage";
-        hash = "sha256-zhKTCsg6/Fyzsy4s1xGCmPvxMS3huDNhxLUhaS6W1tE=";
+        url = versionData.x86_64-linux.url;
+        hash = versionData.x86_64-linux.hash;
       };
     }
     .${stdenvNoCC.system} or (throw "osu-lazer-bin: ${stdenvNoCC.system} is unsupported.");
 
-  meta = {
-    description = "Rhythm is just a *click* away (AppImage version for score submission and multiplayer, and binary distribution for Darwin systems)";
-    homepage = "https://osu.ppy.sh";
-    license = with lib.licenses; [
-      mit
-      cc-by-nc-40
-      unfreeRedistributable # osu-framework contains libbass.so in repository
-    ];
-    sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
-    maintainers = with lib.maintainers; [
-      gepbird
-      stepbrobd
-      Guanran928
-    ];
-    mainProgram = "osu!";
-    platforms = [
-      "aarch64-darwin"
-      "x86_64-darwin"
-      "x86_64-linux"
-    ];
-  };
+  # Load metadata from separate module
+  meta = import ./meta.nix { inherit lib; };
 
   passthru.updateScript = ./update.sh;
+  
+  # Common arguments to pass to platform-specific builders
+  commonArgs = {
+    inherit lib stdenvNoCC appimageTools makeWrapper;
+    inherit pname version src meta passthru;
+  };
 in
 if stdenvNoCC.hostPlatform.isDarwin then
-  stdenvNoCC.mkDerivation {
-    inherit
-      pname
-      version
-      src
-      meta
-      passthru
-      ;
-
-    nativeBuildInputs = [ makeWrapper ];
-
-    installPhase = ''
-      runHook preInstall
-      OSU_WRAPPER="$out/Applications/osu!.app/Contents"
-      OSU_CONTENTS="osu!.app/Contents"
-      mkdir -p "$OSU_WRAPPER/MacOS"
-      cp -r "$OSU_CONTENTS/Info.plist" "$OSU_CONTENTS/Resources" "$OSU_WRAPPER"
-      cp -r "osu!.app" "$OSU_WRAPPER/Resources/osu-wrapped.app"
-      makeWrapper "$OSU_WRAPPER/Resources/osu-wrapped.app/Contents/MacOS/osu!" "$OSU_WRAPPER/MacOS/osu!" --set OSU_EXTERNAL_UPDATE_PROVIDER 1
-      runHook postInstall
-    '';
-  }
+  import ./darwin.nix commonArgs
 else
-  appimageTools.wrapType2 {
-    inherit
-      pname
-      version
-      src
-      meta
-      passthru
-      ;
-
-    extraPkgs = pkgs: with pkgs; [ icu ];
-
-    extraInstallCommands =
-      let
-        contents = appimageTools.extract { inherit pname version src; };
-      in
-      ''
-        . ${makeWrapper}/nix-support/setup-hook
-        mv -v $out/bin/${pname} $out/bin/osu!
-
-        wrapProgram $out/bin/osu! \
-          ${lib.optionalString nativeWayland "--set SDL_VIDEODRIVER wayland"} \
-          --set OSU_EXTERNAL_UPDATE_PROVIDER 1
-
-        install -m 444 -D ${contents}/osu!.desktop -t $out/share/applications
-        for i in 16 32 48 64 96 128 256 512 1024; do
-          install -D ${contents}/osu.png $out/share/icons/hicolor/''${i}x$i/apps/osu.png
-        done
-      '';
-  }
+  import ./linux.nix (commonArgs // { inherit nativeWayland; })
