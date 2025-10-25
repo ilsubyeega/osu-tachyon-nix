@@ -32,9 +32,10 @@ let
   commonArgs = {
     inherit lib stdenvNoCC appimageTools makeWrapper;
     inherit pname version src meta passthru;
+    nativeWayland = nativeWayland;
   };
 in
 if stdenvNoCC.hostPlatform.isDarwin then
   import ./darwin.nix commonArgs
 else
-  import ./linux.nix (commonArgs // { inherit nativeWayland; })
+  import ./linux.nix commonArgs

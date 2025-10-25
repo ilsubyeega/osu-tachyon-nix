@@ -7,7 +7,7 @@
   src,
   meta,
   passthru,
-  nativeWayland ? false,
+  nativeWayland,
 }:
 
 appimageTools.wrapType2 {
